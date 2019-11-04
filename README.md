@@ -61,7 +61,7 @@ else:
 
 Looks all right. We have got the access token, and included in the HEADERS. You can print response to see more. 
 
-### List folders unde root
+### List folders under root directory
 
 We will pring both directory names and item-d
 
