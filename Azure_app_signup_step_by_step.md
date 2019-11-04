@@ -8,7 +8,7 @@
 
 1. Go to https://portal.azure.com 
 
-![01.PNG](01.PNG)
+![01.PNG](/resources/01.PNG)
 
 2. Navigate to Azure Active Directory
 
