@@ -7,7 +7,7 @@ Azure portal.
 
 ```python
 # Program: Accessing OneDrive via Graph API
-# Author: Pranab Das (Twitter: @Pranab_Das)
+# Author: Pranab Das (GitHub: @pranabdas)
 # Version: 20210820
 ```
 
@@ -17,10 +17,15 @@ import requests
 import json
 import urllib
 import os
+from getpass import getpass
+import time
+from datetime import datetime
 ```
 
 
 ## Get Access token
+
+### Token flow authentication
 
 ```python
 URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
@@ -63,10 +68,117 @@ else:
 
 
 Looks all right. We have got the access token, and included in the HEADERS. You
-can print response to see more.
+can print response to see more. Go ahead with OneDrive operations.
 
+### Code flow authentication
 
-## List folders under root directory
+Code flow returns both `access_token` and `refresh_token` which can be used to
+request new `access_token` and `refresh_token` for persistent session. If you
+are using organization account, you might require consent of organization
+administrator.
+
+```python
+# Get code
+URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
+client_id = "362422eb-d9d6-4245-9eca-2be5cf256450"
+permissions = ['offline_access', 'files.readwrite', 'User.Read']
+response_type = 'code'
+redirect_uri = 'http://localhost:8080/'
+scope = ''
+for items in range(len(permissions)):
+    scope = scope + permissions[items]
+    if items < len(permissions)-1:
+        scope = scope + '+'
+
+print('Click over this link ' +URL + '?client_id=' + client_id + '&scope=' + scope + '&response_type=' + response_type+\
+     '&redirect_uri=' + urllib.parse.quote(redirect_uri))
+print('Sign in to your account, copy the whole redirected URL.')
+code = getpass("Paste the URL here :")
+code = code[(code.find('?code') + len('?code') + 1) :]
+
+URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+
+response = requests.post(URL + '?client_id=' + client_id + '&scope=' + scope + '&grant_type=authorization_code' +\
+     '&redirect_uri=' + urllib.parse.quote(redirect_uri)+ '&code=' + code)
+```
+
+```python
+# Get token
+data = {
+    "client_id": client_id,
+    "scope": permissions,
+    "code": code,
+    "redirect_uri": redirect_uri,
+    "grant_type": 'authorization_code',
+    "client_secret": client_secret
+}
+
+response = requests.post(URL, data=data)
+
+token = json.loads(response.text)["access_token"]
+refresh_token = json.loads(response.text)["refresh_token"]
+```
+
+```python
+# Refresh token
+def get_refresh_token():
+    data = {
+        "client_id": client_id,
+        "scope": permissions,
+        "refresh_token": refresh_token,
+        "redirect_uri": redirect_uri,
+        "grant_type": 'refresh_token',
+        "client_secret": 'xxxx-yyyy-zzzz',
+    }
+
+    response = requests.post(URL, data=data)
+
+    token = json.loads(response.text)["access_token"]
+    refresh_token = json.loads(response.text)["refresh_token"]
+    last_updated = time.mktime(datetime.today().timetuple())
+
+    return token, refresh_token, last_updated
+```
+
+```python
+token, refresh_token, last_updated = get_refresh_token()
+```
+
+If you have a large data to upload, you may use below mock code inside your
+upload loop:
+```python
+elapsed_time = time.mktime(datetime.today().timetuple()) - last_updated
+
+if (elapsed_time < 45*60*60):
+    do_something()
+else if (elapsed_time < 59*60*60):
+    token, refresh_token, last_updated = get_refresh_token()
+else:
+    go_to_code_flow()
+```
+
+## OneDrive operations
+
+```python
+URL = 'https://graph.microsoft.com/v1.0/'
+
+HEADERS = {'Authorization': 'Bearer ' + token}
+
+response = requests.get(URL + 'me/drive/', headers = HEADERS)
+if (response.status_code == 200):
+    response = json.loads(response.text)
+    print('Connected to the OneDrive of', response['owner']['user']['displayName']+' (',response['driveType']+' ).', \
+         '\nConnection valid for one hour. Refresh token if required.')
+elif (response.status_code == 401):
+    response = json.loads(response.text)
+    print('API Error! : ', response['error']['code'],\
+         '\nSee response for more details.')
+else:
+    response = json.loads(response.text)
+    print('Unknown error! See response for more details.')
+```
+
+### List folders under root directory
 
 We will print both directory `name` and `item-d`
 ```python
@@ -81,7 +193,7 @@ for entries in range(len(items)):
     Getting started with OneDrive.pdf | item-id > C1465DBECD7188C9!102
 
 
-## Create new folder (in the root directory)
+### Create new folder (in the root directory)
 
 ```python
 url = URL + 'me/drive/root/children/'
@@ -111,7 +223,7 @@ for entries in range(len(items)):
 Here we go, we have successfully created the folder New_Folder.
 
 
-## List folders under a sub-folder (need to use item-id)
+### List folders under a sub-folder (need to use item-id)
 Note that if you need to create or list sub-folders, you need to use the
 `item-id`. The `path/folder` notation does not work everywhere.
 
@@ -150,7 +262,7 @@ for entries in range(len(items)):
     sub_folder | item-id > C1465DBECD7188C9!107
 
 
-## Rename an item
+### Rename an item
 
 ```python
 url = URL + 'me/drive/items/C1465DBECD7188C9!106'
@@ -174,7 +286,7 @@ for entries in range(len(items)):
     Getting started with OneDrive.pdf | item-id > C1465DBECD7188C9!102
 
 
-## Move item
+### Move item
 ```python
 # url = URL + 'me/drive/items/{item-id-of-item-to-be-moved}'
 # provide item-id-of-destination-directory under parentReference in the body
@@ -188,7 +300,7 @@ response = json.loads(requests.patch(url, headers=HEADERS, json=body).text)
 ```
 
 
-## Delete item
+### Delete item
 
 ```python
 url = '/me/drive/items/C1465DBECD7188C9!106'
@@ -218,7 +330,7 @@ for entries in range(len(items)):
     Getting started with OneDrive.pdf | item-id > C1465DBECD7188C9!102
 
 
-## Find item-id by item name
+### Find item-id by item name
 
 ```python
 items = json.loads(requests.get(URL + 'me/drive/items/root/children', headers=HEADERS).text)
@@ -237,7 +349,7 @@ if(item_id==''):
     Item-id of Documents : C1465DBECD7188C9!103
 
 
-## Upload file
+### Upload file
 
 ```python
 url = 'me/drive/root:/example_spectrum.txt:/content'
@@ -261,7 +373,7 @@ for entries in range(len(items)):
     Getting started with OneDrive.pdf | item-id > C1465DBECD7188C9!102
 
 
-## Access/Download data
+### Access/Download data
 
 ```python
 url = 'me/drive/root:/example_spectrum.txt:/content'
@@ -272,7 +384,7 @@ data = requests.get(url, headers=HEADERS).text
 You may like to save the data in a file in your local drive.
 
 
-## Upload large files (Can be used to upload small files as well)
+### Upload large files (Can be used to upload small files as well)
 If you have files (probably larger than 4 MB), you need to create upload
 sessions.
 
@@ -310,7 +422,7 @@ response2 = requests.delete(url)
 ```
 
 
-## OneDrive storage usage
+### OneDrive storage usage
 
 ```python
 response = json.loads(requests.get(URL + 'me/drive/', headers = HEADERS).text)
